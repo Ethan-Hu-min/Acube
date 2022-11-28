@@ -1,10 +1,11 @@
 import taichi as ti
 import numpy as np
 
-ti.init(arch=ti.gpu)  # Try to run on GPU
+ti.init(arch=ti.cpu)  # Try to run on GPU
 
 quality = 1  # Use a larger value for higher-res simulations
-n_particles, n_grid = 9000 * quality**2, 128 * quality
+size = 64
+n_particles, n_grid = size**2 * quality**2, 128 * quality
 dx, inv_dx = 1 / n_grid, float(n_grid)
 dt = 1e-4 / quality
 p_vol, p_rho = (dx * 0.5)**2, 1
@@ -27,6 +28,8 @@ grid_m = ti.field(dtype=float, shape=(n_grid, n_grid))  # grid node mass
 gravity = ti.Vector.field(2, dtype=float, shape=())
 attractor_strength = ti.field(dtype=float, shape=())
 attractor_pos = ti.Vector.field(2, dtype=float, shape=())
+walls = [(0.0, 30/128), (30/128, 0.0)]
+knife = [(0.8, 0.0), (0.8, 0.2)]
 
 
 @ti.kernel
@@ -82,7 +85,8 @@ def substep():
             grid_v[i, j] += dt * gravity[None] * 30  # gravity
             dist = attractor_pos[None] - dx * ti.Vector([i, j])
             grid_v[i, j] += \
-                dist / (0.01 + dist.norm()) * attractor_strength[None] * dt * 100
+                dist / (0.01 + dist.norm()) * \
+                attractor_strength[None] * dt * 100
             if i < 3 and grid_v[i, j][0] < 0:
                 grid_v[i, j][0] = 0  # Boundary conditions
             if i > n_grid - 3 and grid_v[i, j][0] > 0:
@@ -91,6 +95,15 @@ def substep():
                 grid_v[i, j][1] = 0
             if j > n_grid - 3 and grid_v[i, j][1] > 0:
                 grid_v[i, j][1] = 0
+            if i > walls[0][0]*128 and i < walls[1][0]*128 and j > walls[1][1]*128 and j < walls[0][1]*128:
+                if abs(grid_v[i - 1, j][0]) < 1e-6 and abs(grid_v[i - 1, j][1]) < 1e-6:
+                    grid_v[i, j][0] = 0
+                if abs(grid_v[i + 1, j][0]) < 1e-6 and abs(grid_v[i + 1, j][1]) < 1e-6:
+                    grid_v[i, j][0] = 0
+                if abs(grid_v[i, j - 1][0]) < 1e-6 and abs(grid_v[i, j - 1][1]) < 1e-6:
+                    grid_v[i, j][1] = 0
+                if abs(grid_v[i, j + 1][0]) < 1e-6 and abs(grid_v[i, j + 1][1]) < 1e-6:
+                    grid_v[i, j][1] = 0
     for p in x:  # grid to particle (G2P)
         base = (x[p] * inv_dx - 0.5).cast(int)
         fx = x[p] * inv_dx - base.cast(float)
@@ -104,19 +117,26 @@ def substep():
             weight = w[i][0] * w[j][1]
             new_v += weight * g_v
             new_C += 4 * inv_dx * weight * g_v.outer_product(dpos)
-        v[p], C[p] = new_v, new_C
+        v[p], C[p] = new_v*0.995, new_C*0.995
         x[p] += dt * v[p]  # advection
+        # if x[p][1] > 0 and x[p][1] < 0.2 and abs(x[p][0] - 0.8) < 0.01:
+        #     if x[p][0] > 0.8:
+        #         v[p][0] = (0.01 - abs(x[p][0] - 0.8))*16000
+        #     else:
+        #         v[p][0] = -(0.01 - abs(x[p][0] - 0.8))*16000
 
 
 @ti.kernel
 def reset():
-    group_size = n_particles // 3
     for i in range(n_particles):
         x[i] = [
-            ti.random() * 0.2 + 0.3 + 0.10 * (i // group_size),
-            ti.random() * 0.2 + 0.05 + 0.32 * (i // group_size)
+            # ti.random() * 0.15 + 0.5,
+            # ti.random() * 0.15 + 0.5
+            ((i % size)/size) * 0.16 + 0.5,
+            ((i // size)/size) * 0.16 + 0.5
+            #ti.random() * 0.2 + 0.05 + 0.10 * (i // group_size)
         ]
-        material[i] = i // group_size  # 0: fluid 1: jelly 2: snow
+        material[i] = 1  # i // group_size  # 0: fluid 1: jelly 2: snow
         v[i] = [0, 0]
         F[i] = ti.Matrix([[1, 0], [0, 1]])
         Jp[i] = 1
@@ -128,7 +148,7 @@ print(
 )
 gui = ti.GUI("Taichi MLS-MPM-128", res=512, background_color=0x112F41)
 reset()
-gravity[None] = [0, -1]
+gravity[None] = [0, -10]
 
 for frame in range(20000):
     if gui.get_event(ti.GUI.PRESS):
@@ -137,15 +157,15 @@ for frame in range(20000):
         elif gui.event.key in [ti.GUI.ESCAPE, ti.GUI.EXIT]:
             break
     if gui.event is not None:
-        gravity[None] = [0, 0]  # if had any event
+        gravity[None] = [0, -10]  # if had any event
     if gui.is_pressed(ti.GUI.LEFT, 'a'):
-        gravity[None][0] = -1
+        gravity[None][0] = -10
     if gui.is_pressed(ti.GUI.RIGHT, 'd'):
-        gravity[None][0] = 1
+        gravity[None][0] = 10
     if gui.is_pressed(ti.GUI.UP, 'w'):
-        gravity[None][1] = 1
+        gravity[None][1] = 10
     if gui.is_pressed(ti.GUI.DOWN, 's'):
-        gravity[None][1] = -1
+        gravity[None][1] = -10
     mouse = gui.get_cursor_pos()
     gui.circle((mouse[0], mouse[1]), color=0x336699, radius=15)
     attractor_pos[None] = [mouse[0], mouse[1]]
@@ -157,9 +177,10 @@ for frame in range(20000):
     for s in range(int(2e-3 // dt)):
         substep()
     gui.circles(x.to_numpy(),
-                radius=1.5,
+                radius=1,
                 palette=[0x068587, 0xED553B, 0xEEEEF0],
                 palette_indices=material)
-
+    gui.rect(walls[0], walls[1], radius=1, color=0x068587)
+    gui.line(knife[0], knife[1], radius=1, color=0x068587)
     # Change to gui.show(f'{frame:06d}.png') to write images to disk
     gui.show()
