@@ -95,15 +95,29 @@ def substep():
                 grid_v[i, j][1] = 0
             if j > n_grid - 3 and grid_v[i, j][1] > 0:
                 grid_v[i, j][1] = 0
-            if i > walls[0][0]*128 and i < walls[1][0]*128 and j > walls[1][1]*128 and j < walls[0][1]*128:
-                if abs(grid_v[i - 1, j][0]) < 1e-6 and abs(grid_v[i - 1, j][1]) < 1e-6:
+            if i >= walls[0][0]*128 and i <= walls[1][0]*128 and j >= walls[1][1]*128 and j <= walls[0][1]*128:
+                # if abs(grid_v[i - 1, j][0]) < 1e-6 and abs(grid_v[i - 1, j][1]) < 1e-6:
+                #     grid_v[i, j][0] = 0
+                # if abs(grid_v[i + 1, j][0]) < 1e-6 and abs(grid_v[i + 1, j][1]) < 1e-6:
+                #     grid_v[i, j][0] = 0
+                # if abs(grid_v[i, j - 1][0]) < 1e-6 and abs(grid_v[i, j - 1][1]) < 1e-6:
+                #     grid_v[i, j][1] = 0
+                # if abs(grid_v[i, j + 1][0]) < 1e-6 and abs(grid_v[i, j + 1][1]) < 1e-6:
+                #     grid_v[i, j][1] = 0
+                if i == walls[0][0]*128:
                     grid_v[i, j][0] = 0
-                if abs(grid_v[i + 1, j][0]) < 1e-6 and abs(grid_v[i + 1, j][1]) < 1e-6:
+                if i == walls[1][0]*128:
                     grid_v[i, j][0] = 0
-                if abs(grid_v[i, j - 1][0]) < 1e-6 and abs(grid_v[i, j - 1][1]) < 1e-6:
+                if j == walls[1][1]*128:
                     grid_v[i, j][1] = 0
-                if abs(grid_v[i, j + 1][0]) < 1e-6 and abs(grid_v[i, j + 1][1]) < 1e-6:
+                if j == walls[0][1]*128:
                     grid_v[i, j][1] = 0
+
+            # if j > 0 and j < 25:
+            #     if i == 102:
+            #         grid_v[i, j][0] = 0
+            #     if i == 103:
+            #         grid_v[i, j][0] = 0
     for p in x:  # grid to particle (G2P)
         base = (x[p] * inv_dx - 0.5).cast(int)
         fx = x[p] * inv_dx - base.cast(float)
@@ -119,11 +133,11 @@ def substep():
             new_C += 4 * inv_dx * weight * g_v.outer_product(dpos)
         v[p], C[p] = new_v*0.995, new_C*0.995
         x[p] += dt * v[p]  # advection
-        # if x[p][1] > 0 and x[p][1] < 0.2 and abs(x[p][0] - 0.8) < 0.01:
-        #     if x[p][0] > 0.8:
-        #         v[p][0] = (0.01 - abs(x[p][0] - 0.8))*16000
-        #     else:
-        #         v[p][0] = -(0.01 - abs(x[p][0] - 0.8))*16000
+        if x[p][1] > 0 and x[p][1] < 0.2 and abs(x[p][0] - 0.8) < 0.01:
+            if x[p][0] > 0.8:
+                v[p][0] = (0.01 - abs(x[p][0] - 0.8))*16500
+            else:
+                v[p][0] = -(0.01 - abs(x[p][0] - 0.8))*16500
 
 
 @ti.kernel
@@ -146,7 +160,7 @@ def reset():
 print(
     "[Hint] Use WSAD/arrow keys to control gravity. Use left/right mouse buttons to attract/repel. Press R to reset."
 )
-gui = ti.GUI("Taichi MLS-MPM-128", res=512, background_color=0x112F41)
+gui = ti.GUI("Acube", res=512, background_color=0xe3e3e3)
 reset()
 gravity[None] = [0, -10]
 
@@ -178,7 +192,7 @@ for frame in range(20000):
         substep()
     gui.circles(x.to_numpy(),
                 radius=1,
-                palette=[0x068587, 0xED553B, 0xEEEEF0],
+                palette=[0x068587, 0xED553B, 0x2967e3],
                 palette_indices=material)
     gui.rect(walls[0], walls[1], radius=1, color=0x068587)
     gui.line(knife[0], knife[1], radius=1, color=0x068587)
